@@ -4,14 +4,22 @@ SCRIPTDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 REFERENCEDIR="$SCRIPTDIR/references"
 MODULESFILE="$REFERENCEDIR/modules.ini"
 JSONFILESDIR="$SCRIPTDIR/jsonfiles"
-
-#The folder where steam will store the folders for all of the mods.
-MODSDIR="$SCRIPTDIR/modsfolder"
+DEFAULTDIRSFILE="$SCRIPTDIR/directories.txt"
 
 function createModules() {
+    local RAWMODULESFILE="$SCRIPTDIR/rawmoduleinfo.txt"
+    local DEFAULTSTATSFILENAME="DefaultGameData_CharacterStats.ini"
+
+    local configdir=""
+    local modulename=""
+    local modulesinfo=()
+
+    #The folder where steam will store the folders for all of the mods.
+    local modsdir=$( sed -n -r 's/modsdirectory=(.*)/\1/gp' $DEFAULTDIRSFILE )
+    
+    #The files may or may not exist but want them to be empty regardless so just clear them out even if they don't already exist.
     > $MODULESFILE
-    RAWMODULESFILE="$SCRIPTDIR/rawmoduleinfo.txt"
-    DEFAULTSTATSFILENAME="DefaultGameData_CharacterStats.ini"
+    > $RAWMODULESFILE
 
     echo "[Module War_of_the_Chosen Character Stats]" >> $MODULESFILE
     echo "name=\"War_of_the_Chosen\"" >> $MODULESFILE
@@ -21,12 +29,9 @@ function createModules() {
     echo "[End Module War_of_the_Chosen Character Stats]" >> $MODULESFILE
     echo >> $MODULESFILE
 
-    #The file may or may not exist but want it to be empty regardless so just clear it out even if it doesn't already exist.
-    > $RAWMODULESFILE
-
-    ls -1 $MODSDIR | while read modfolder
+    ls -1 $modsdir | while read modfolder
     do
-        configdir="$MODSDIR/$modfolder/config"
+        configdir="$modsdir/$modfolder/config"
         modulename=$( cat "$configdir/XComEditor.ini" | awk -F"=" ' 
         $0 ~ /^\+ModPackages/ {
             gsub(/+ModPackages=/, "")
@@ -69,41 +74,166 @@ function createModules() {
     rm $RAWMODULESFILE
 }
 
-if [[ $1 =~ -C:.+ ]]
-then
-    option=$1
-    defaultstatsfiledir=${option//-C:/}
-    
-    createModules $defaultstatsfiledir
-fi
+function createJsonFiles() {
+    local modulevalues=""
+    local modulename=""
+    local jsonfile=""
+    local jsonfiledir=""
+    local jsonfullfilename=""
+    local inifiledir=""
+    local inifilename=""
+    local inifilefullname=""
 
-#output of loadmodules script "name jsonfile inifiledir inifilename"
-$SCRIPTDIR/loadmodules.awk $MODULESFILE | while read line
-do
-
-    modulevalues=( $line )
-
-    modulename=$(  echo ${modulevalues[0]} | sed 's/["\r]//g' )
-
-    jsonfile=$(  echo ${modulevalues[1]} | sed 's/["\r]//g' )
-    jsonfiledir="$SCRIPTDIR/jsonfiles"
-    jsonfullfilename="$jsonfiledir/$jsonfile"
-
-    inifiledir=$( echo ${modulevalues[2]} | sed 's/["\r]//g' )
-    inifilename=$( echo ${modulevalues[3]} | sed 's/["\r]//g' )
-    inifilefullname="$inifiledir/$inifilename"
-
-    
-    #If character data ini file exists then look for json file.
-    if [[ -e $inifilefullname ]]
+    if [[ -e $JSONFILESDIR ]]
     then
-        #If json file does not exist that means either it was delete or never generated so generate it.
-        if [[ ! -e $jsonfullfilename ]]
+        rm -r $JSONFILESDIR
+    fi
+
+    mkdir $JSONFILESDIR
+
+    #output of loadmodules script "name jsonfile inifiledir inifilename"
+    $SCRIPTDIR/loadmodules.awk $MODULESFILE | while read line
+    do
+
+        modulevalues=( $line )
+
+        modulename=$(  echo ${modulevalues[0]} | sed 's/["\r]//g' )
+
+        jsonfile=$(  echo ${modulevalues[1]} | sed 's/["\r]//g' )
+        jsonfiledir="$SCRIPTDIR/jsonfiles"
+        jsonfullfilename="$jsonfiledir/$jsonfile"
+
+        inifiledir=$( echo ${modulevalues[2]} | sed 's/["\r]//g' )
+        inifilename=$( echo ${modulevalues[3]} | sed 's/["\r]//g' )
+        inifilefullname="$inifiledir/$inifilename"
+
+        
+        #If character data ini file exists then look for json file.
+        if [[ -e $inifilefullname ]]
         then
-            echo $jsonfullfilename
             $SCRIPTDIR/characterstatstoobject.awk -v "module=$modulename" -v "jsonfile=$jsonfullfilename" $inifilefullname
         fi
-    fi
-done
+    done
+}
 
-jsonfiles=( $( ls $JSONFILESDIR ) )
+function createDefaults() {
+    local defaultstatsdir=""
+    local defaultstatsfile=""
+
+    read -p "Please enter directory of DefaultGameData_CharacterStats.ini file: " defaultstatsdir
+    defaultstatsfile="$defaultstatsdir/DefaultGameData_CharacterStats.ini"
+
+    if [[ -e $defaultstatsfile ]]
+    then
+        echo "defaultstatsdirectory=$defaultstatsdir" > $DEFAULTDIRSFILE
+    else
+        echo "That directory does not contain the DefaultGameData_CharacterStats.ini file. Please run again and enter correct directory."
+        exit 2
+    fi
+
+    read -p "Please enter directory where XCOM2 mods are (make sure you enter the correct one. Using any other directory could cause issues): " modsdir
+    
+    if [[ -e $modsdir ]]
+    then
+        echo "modsdirectory=$modsdir" >> $DEFAULTDIRSFILE
+    else
+        echo "That directory does exist. Please run again and enter correct directory."
+        exit 2
+    fi
+
+    createModules $defaultstatsfile
+    createJsonFiles
+}
+
+function printUsage() {
+    echo "Usage: characterstats.sh [options]"
+    echo "Available options are:"
+    echo "    -cdef: Reload defaults for json files and where to find ini files and mod files. This will act as if you are running for ther first time." 
+    echo "           If this option is present with others then the others are just ignored."
+    echo "    -cmodules: Reload modules that contain information on names of mods, where ini files are and names for json files."
+    echo "    -cjson: Reloads the json/stat files created from the modules that were loaded."
+    exit 0
+}
+
+function processArgs() {
+    local bcreateDefaults=0
+    local bcreateJson=0
+    local bcreateModules=0
+    local defaultstatsfiledir=""
+
+    #Print usage for --help or -? options
+    if [[ $* =~ --help|-\? ]]
+    then
+        printUsage
+    fi
+
+    #Process any options passed into the script.
+    while (($# > 0))
+    do
+        if [[ $1 == "-cdef" ]]
+        then
+            bcreateDefaults=1
+            shift
+        elif [[ $1 == "-cjson" ]]
+        then
+            bcreateJson=1
+            shift
+        elif [[ $1 == "-cmodules" ]]
+        then
+            bcreateModules=1
+            shift
+        else
+            echo "Invalid option $1. Please try run again and provide valid option."
+            exit 2
+        fi
+    done
+    
+    if (( $bcreateDefaults ))
+    then
+        createDefaults
+    fi
+
+    if (( $bcreateModules  &&  ! $bcreateDefaults ))
+    then
+        defaultstatsfiledir=$( sed -n -r 's/defaultstatsdirectory=(.*)/\1/gp' $DEFAULTDIRSFILE )
+        createModules $defaultstatsfiledir
+    fi
+
+    if (( $bcreateJson  &&  ! $bcreateDefaults ))
+    then
+        createJsonFiles
+    fi
+}
+
+function displayModules() {
+    local jsonfiles=( $( ls $JSONFILESDIR ) )
+    local i=0
+
+    echo -e "\nBelow are the mods that have had data loaded for them:"
+    for ((i = 0; i < ${#jsonfiles[@]}; i++ ))
+    do
+        echo "    $(( i + 1 ))) ${jsonfiles[$i]}" | sed 's/\.json//g'
+    done
+
+    echo
+    read -p "    Enter choice: " choice
+
+    jsonFile="$JSONFILESDIR/${jsonfiles[$((choice - 1))]}"
+
+    echo $jsonFile
+}
+
+function main() {
+    if [[ ! -e $DEFAULTDIRSFILE || ! -e $JSONFILESDIR ]]
+    then
+        echo "Detetcted first time run of script (did not find default files). Setting up defaults."
+        createDefaults        
+    elif (( $# > 0 ))
+    then
+        processArgs $*
+    fi
+
+    displayModules
+}
+
+main $*
