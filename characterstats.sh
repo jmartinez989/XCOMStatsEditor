@@ -5,6 +5,7 @@ REFERENCEDIR="$SCRIPTDIR/references"
 MODULESFILE="$REFERENCEDIR/modules.ini"
 JSONFILESDIR="$SCRIPTDIR/jsonfiles"
 DEFAULTDIRSFILE="$SCRIPTDIR/directories.txt"
+PYTHONPROG="python $SCRIPTDIR/loadstats.py"
 
 function createModules() {
     local RAWMODULESFILE="$SCRIPTDIR/rawmoduleinfo.txt"
@@ -24,7 +25,7 @@ function createModules() {
     echo "[Module War_of_the_Chosen Character Stats]" >> $MODULESFILE
     echo "name=\"War_of_the_Chosen\"" >> $MODULESFILE
     echo "jsonfile=\"War_of_the_Chosen.json\"" >> $MODULESFILE
-    echo "inifiledir=\"$1\"" >> $MODULESFILE
+    echo "inifiledir=\"$*\"" >> $MODULESFILE
     echo "inifilename=\"$DEFAULTSTATSFILENAME\"" >> $MODULESFILE
     echo "[End Module War_of_the_Chosen Character Stats]" >> $MODULESFILE
     echo >> $MODULESFILE
@@ -32,30 +33,34 @@ function createModules() {
     ls -1 $modsdir | while read modfolder
     do
         configdir="$modsdir/$modfolder/config"
-        modulename=$( cat "$configdir/XComEditor.ini" | awk -F"=" ' 
-        $0 ~ /^\+ModPackages/ {
-            gsub(/+ModPackages=/, "")
-            print
-        }' | sed -r 's/\r//g' )
 
-        #There might be some instances where the where the stats file might not be in the config directory of the mod. If that is the
-        #case then go one level further down to any other directories that are in the in the config directory. This is to get stas
-        #files in cases like A Better Advent where there are stats files for different unit types in sub directories of the config
-        #directory.
-        if [[ -e "$configdir/XComGameData_CharacterStats.ini" ]]
+        if [[ -e $configdir ]]
         then
-            echo "$modulename $modulename.json $configdir XComGameData_CharacterStats.ini" >> $RAWMODULESFILE
-        else
-            ls -la $configdir | sed -r 's/ +/ /g' | awk '
-                $1 ~ /^d/ && $9 !~ /^\.+/ {
-                print $9 
-            }' | while read configSubDir
-            do
-                if [[ -e "$configdir/$configSubDir/XComGameData_CharacterStats.ini" ]]
-                then
-                    echo "${configSubDir}_$modulename ${configSubDir}_$modulename.json $configdir/$configSubDir XComGameData_CharacterStats.ini" >> $RAWMODULESFILE
-                fi
-            done
+            modulename=$( cat "$configdir/XComEditor.ini" | awk -F"=" ' 
+            $0 ~ /^\+ModPackages/ {
+                gsub(/+ModPackages=/, "")
+                print
+            }' | sed -r 's/\r//g' )
+
+            #There might be some instances where the where the stats file might not be in the config directory of the mod. If that is the
+            #case then go one level further down to any other directories that are in the in the config directory. This is to get stas
+            #files in cases like A Better Advent where there are stats files for different unit types in sub directories of the config
+            #directory.
+            if [[ -e "$configdir/XComGameData_CharacterStats.ini" ]]
+            then
+                echo "$modulename $modulename.json $configdir XComGameData_CharacterStats.ini" >> $RAWMODULESFILE
+            else
+                ls -la $configdir | sed -r 's/ +/ /g' | awk '
+                    $1 ~ /^d/ && $9 !~ /^\.+/ {
+                    print $9 
+                }' | while read configSubDir
+                do
+                    if [[ -e "$configdir/$configSubDir/XComGameData_CharacterStats.ini" ]]
+                    then
+                        echo "${configSubDir}_$modulename ${configSubDir}_$modulename.json $configdir/$configSubDir XComGameData_CharacterStats.ini" >> $RAWMODULESFILE
+                    fi
+                done
+            fi
         fi
     done
 
@@ -103,15 +108,14 @@ function createJsonFiles() {
         jsonfiledir="$SCRIPTDIR/jsonfiles"
         jsonfullfilename="$jsonfiledir/$jsonfile"
 
-        inifiledir=$( echo ${modulevalues[2]} | sed 's/["\r]//g' )
+        inifiledir=$( echo ${modulevalues[2]} | sed 's/["\r]//g; s/_/ /g' )
         inifilename=$( echo ${modulevalues[3]} | sed 's/["\r]//g' )
         inifilefullname="$inifiledir/$inifilename"
 
-        
         #If character data ini file exists then look for json file.
         if [[ -e $inifilefullname ]]
         then
-            $SCRIPTDIR/characterstatstoobject.awk -v "module=$modulename" -v "jsonfile=$jsonfullfilename" $inifilefullname
+            $SCRIPTDIR/characterstatstoobject.awk -v "module=$modulename" -v "jsonfile=$jsonfullfilename" "$inifilefullname"
         fi
     done
 }
@@ -127,7 +131,7 @@ function createDefaults() {
     then
         echo "defaultstatsdirectory=$defaultstatsdir" > $DEFAULTDIRSFILE
     else
-        echo "That directory does not contain the DefaultGameData_CharacterStats.ini file. Please run again and enter correct directory."
+        echo "Directory $defaultstatsdir does not contain the DefaultGameData_CharacterStats.ini file. Please run again and enter correct directory."
         exit 2
     fi
 
@@ -141,7 +145,7 @@ function createDefaults() {
         exit 2
     fi
 
-    createModules $defaultstatsfile
+    createModules $defaultstatsdir
     createJsonFiles
 }
 
@@ -220,7 +224,7 @@ function displayModules() {
 
     jsonFile="$JSONFILESDIR/${jsonfiles[$((choice - 1))]}"
 
-    echo $jsonFile
+    $PYTHONPROG $jsonFile
 }
 
 function main() {

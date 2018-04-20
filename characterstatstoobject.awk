@@ -89,12 +89,12 @@ BEGIN {
     }
 }
 
-#CharacterBaseStats[eStat_HP]=5
-/^CharacterBaseStats/ {
-    stat = gensub(/^CharacterBaseStats\[eStat_([[:alnum:]]+)\] *= *.*/, "\\1" , "g")
+#CharacterBaseStats[eStat_HP]=5 or +CharacterBaseStats[eStat_HP]=5
+/^\+?CharacterBaseStats/ {
+    stat = gensub(/^\+?CharacterBaseStats\[eStat_([[:alnum:]]+)\] *= *.*/, "\\1" , "g")
     gsub(/[^[:alnum:]]/, "", stat)
 
-    value = gensub(/^CharacterBaseStats\[eStat_[[:alnum:]]+\] *= *([0-9]+).*/, "\\1" , "g")
+    value = gensub(/^\+?CharacterBaseStats\[eStat_[[:alnum:]]+\] *= *([0-9]+).*/, "\\1" , "g")
     gsub(/[^[:alnum:]]/, "", value)
 
     if(!statOverride) {
@@ -129,29 +129,31 @@ END {
     linesCount = linesCount + 1
 
     for(unit in units) {
-        lines[linesCount] = "            \"" unit "\": {"
-        linesCount = linesCount + 1
+        if(length(units[unit]["defaultStats"]) != 0) {
+            lines[linesCount] = "            \"" unit "\": {"
+            linesCount = linesCount + 1
 
-        for(property in units[unit]) {
-            if(property == "tacticalName") {
-                lines[linesCount] = "                \"" property "\": " units[unit]["tacticalName"] ","
-                linesCount = linesCount + 1
-            } else {
-                lines[linesCount] = "                \"" property "\": {"
-                linesCount = linesCount + 1
+            for(property in units[unit]) {
+                if(property == "tacticalName") {
+                    lines[linesCount] = "                \"" property "\": " units[unit]["tacticalName"] ","
+                    linesCount = linesCount + 1
+                } else {
+                    lines[linesCount] = "                \"" property "\": {"
+                    linesCount = linesCount + 1
 
-                for(stat in units[unit][property]) {
-                    lines[linesCount] = "                    \"" stat "\": " units[unit][property][stat] ","
+                    for(stat in units[unit][property]) {
+                        lines[linesCount] = "                    \"" stat "\": " units[unit][property][stat] ","
+                        linesCount = linesCount + 1
+                    }
+
+                    lines[linesCount] = "                },"
                     linesCount = linesCount + 1
                 }
-
-                lines[linesCount] = "                },"
-                linesCount = linesCount + 1
             }
-        }
 
-        lines[linesCount] = "            },"
-        linesCount = linesCount + 1
+            lines[linesCount] = "            },"
+            linesCount = linesCount + 1
+        }
     }
 
     lines[linesCount] = "        },"
