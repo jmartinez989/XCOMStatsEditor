@@ -3,12 +3,6 @@ import os
 import json
 
 def main():
-    #The below 2 are going to be used to store values from a call to input() and a while loop will be used to
-    #check these against a set value for the situation needed. statValue will be used to replace the desired
-    #value of the desired unit. Difficulty will be used to choose which difficulty to change stats for.
-    statValue = -1
-    difficulty = -1
-
     continueChanging = True
     #Set of keys that will be used in the characterData[moduleName]["units"][unitName] section of the json object.
     #The key "defaultStats" will be used for 
@@ -22,6 +16,12 @@ def main():
     moduleName = characterData.keys()[0]
     
     while continueChanging:
+        #The below 2 are going to be used to store values from a call to input() and a while loop will be used to
+        #check these against a set value for the situation needed. statValue will be used to replace the desired
+        #value of the desired unit. Difficulty will be used to choose which difficulty to change stats for.
+        statValue = -1
+        difficulty = -1
+        
         for unit in characterData[moduleName]["units"].keys():
             print unit
 

@@ -1,10 +1,29 @@
 #!/usr/bin/gawk -f
 BEGIN {
+    #This will indicate the current unit in the ini file that is being processed. When the file reeaches a unit definition header
+    #Such as [BerserkerM4 X2CharacterTemplate] it will take the name in the brackets and assign that as the current unit being processed.
     currentUnit = ""
 
+    #This array will hold the lines that will be written to the JSON file.
     lines[0] = ""
     delete lines[0]
+    #This will be the current running line number for the JSON file.
     linesCount = 0
+
+    #This array will hold the lines that are going to be written to the characterstats template file.
+    templateFileLines[0] = ""
+    delete templateFileLines[0]
+    #This will be the current running line number for the template file.
+    templateFileLinsCount = 1
+
+    #This is going to be used as a boolean flag to check if the current line of the file has been written to the temple. The reason this is
+    #used is because in some cases we want to just write the current record to the template file as is because there is no template information
+    #for that line. In other cases though we have lines that define a stat for the unit that is being processed. The line will look like
+    #+CharacterBaseStats[eStat_*statName*]=*statamount*. We want to take that and transform it into a templatized format so that program that
+    #handles writing the JSON files to the ini via using jinja emplates can just pass the dictionary (JSON object loaded from JSON file) to
+    #the template manager and load it. Below is the format for the tempaltized line:
+    #    +CharacterBaseStats[eStat_Strength] = {{ *moduleName*['units'][*unitName*][*difficultyOfStatsToAlter*][*statName*] }}
+    wroteLineToTemplate = 0
 
     #The main array of units that will hold all of the stats. It will be a mult-dimensional array that will be used as
     #a json object. Below is the format of the array:
@@ -53,7 +72,7 @@ BEGIN {
     delete alieases[0]
 
     #Command to run as a bash command to a file channel.
-    command = "cat /home/vagrant/shared/XCOMStatsEditor/references/aliases.ini"
+    command = "cat " aliasesFile
 
     #Read in lines from the command output (which is the file that holds all aliases). Each line is split up betwen
     #the "=" so that the values can be stored in the aliases array (keys for the array are the first item in the array
@@ -87,10 +106,17 @@ BEGIN {
         units[currentUnit]["tacticalName"] = "\"" currentUnit "\""
         delete aliases[currentUnit]
     }
+
+    templateFileLines[templateFileLinsCount] = $0
+    templateFileLinsCount = templateFileLinsCount + 1
+    wroteLineToTemplate = 1
 }
 
 #CharacterBaseStats[eStat_HP]=5 or +CharacterBaseStats[eStat_HP]=5
 /^\+?CharacterBaseStats/ {
+    templateFileLine = ""
+    replaceString = ""
+
     stat = gensub(/^\+?CharacterBaseStats\[eStat_([[:alnum:]]+)\] *= *.*/, "\\1" , "g")
     gsub(/[^[:alnum:]]/, "", stat)
 
@@ -99,9 +125,18 @@ BEGIN {
 
     if(!statOverride) {
         units[currentUnit]["defaultStats"][stat] = value
+        #"= {{ WotC['units']['Sectoid']['defaultStats']['HP'] }}"
+        replaceString = "\\1{{ " module "['units']['" currentUnit "']['defaultStats']['" stat "'] }}"
+        templateFileLine = gensub(/(^\+?CharacterBaseStats\[eStat_[[:alnum:]]+\] *= *)([0-9]+).*/, replaceString, "g", $0)
     } else {
         units[currentUnit][diffOverrideKeys[currentDiffOverride]][stat] = value
+        replaceString = "\\1{{ " module "['units']['" currentUnit "']['" diffOverrideKeys[currentDiffOverride] "']['" stat "'] }}"
+        templateFileLine = gensub(/(^\+?CharacterBaseStats\[eStat_[[:alnum:]]+\] *= *)([0-9]+).*/, replaceString, "g", $0)
     }
+
+    templateFileLines[templateFileLinsCount] = templateFileLine
+    templateFileLinsCount = templateFileLinsCount + 1
+    wroteLineToTemplate = 1
 }
 
 #[Soldier_Diff_1 X2CharacterTemplate]
@@ -114,10 +149,28 @@ BEGIN {
     currentDiffOverride = gensub(/^\[[[:alnum:]]+_Diff_([0-3]) X2CharacterTemplate\]/, "\\1", "g")
     currentDiffOverride = currentDiffOverride + 1
 
+    templateFileLines[templateFileLinsCount] = $0
+    templateFileLinsCount = templateFileLinsCount + 1
+    wroteLineToTemplate = 1
+}
+
+{
+    if(!wroteLineToTemplate) {
+        templateFileLines[templateFileLinsCount] = $0
+        templateFileLinsCount = templateFileLinsCount + 1
+    } else {
+        wroteLineToTemplate = 0
+    }
 }
 
 #This is where the JSON Object for all of the stats read in gets created and then printed to file.
 END {
+    print ";" FILENAME >> templateFile
+
+    for(i = 1; i <= length(templateFileLines); i++) {
+        print templateFileLines[i] >> templateFile
+    }
+
     linesCount = 1
     lines[linesCount] = "{"
     linesCount = linesCount + 1
@@ -159,7 +212,10 @@ END {
     lines[linesCount] = "        },"
     linesCount = linesCount + 1
 
-    lines[linesCount] = "        \"filename\": \"\""
+    lines[linesCount] = "        \"iniStatsFileName\": \"" FILENAME "\","
+    linesCount = linesCount + 1
+
+    lines[linesCount] = "        \"templateFileName\": \"" templateFile "\","
     linesCount = linesCount + 1
 
     lines[linesCount] = "    }"

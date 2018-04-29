@@ -1,6 +1,7 @@
 defaultconfig
 jsonfiles
 modsfolder
+templates
 directories.txt
 loadstats.pyc
 references/modules.ini

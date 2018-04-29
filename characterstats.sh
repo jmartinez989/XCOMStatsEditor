@@ -6,6 +6,8 @@ MODULESFILE="$REFERENCEDIR/modules.ini"
 JSONFILESDIR="$SCRIPTDIR/jsonfiles"
 DEFAULTDIRSFILE="$SCRIPTDIR/directories.txt"
 PYTHONPROG="python $SCRIPTDIR/loadstats.py"
+ALIASESFILE="$REFERENCEDIR/aliases.ini"
+TEMPLATESDIR="$SCRIPTDIR/templates"
 
 function createModules() {
     local RAWMODULESFILE="$SCRIPTDIR/rawmoduleinfo.txt"
@@ -36,11 +38,16 @@ function createModules() {
 
         if [[ -e $configdir ]]
         then
-            modulename=$( cat "$configdir/XComEditor.ini" | awk -F"=" ' 
-            $0 ~ /^\+ModPackages/ {
-                gsub(/+ModPackages=/, "")
-                print
-            }' | sed -r 's/\r//g' )
+            if [[ -e "$configdir/XComEditor.ini" ]]
+            then
+                modulename=$( cat "$configdir/XComEditor.ini" | awk -F"=" ' 
+                $0 ~ /^\+ModPackages/ {
+                    gsub(/+ModPackages=/, "")
+                    print
+                }' | sed -r 's/\r//g' )
+            else
+                modulename="ModuleUnknown_$modsdir/$modfolder"
+            fi
 
             #There might be some instances where the where the stats file might not be in the config directory of the mod. If that is the
             #case then go one level further down to any other directories that are in the in the config directory. This is to get stas
@@ -99,7 +106,6 @@ function createJsonFiles() {
     #output of loadmodules script "name jsonfile inifiledir inifilename"
     $SCRIPTDIR/loadmodules.awk $MODULESFILE | while read line
     do
-
         modulevalues=( $line )
 
         modulename=$(  echo ${modulevalues[0]} | sed 's/["\r]//g' )
@@ -115,7 +121,7 @@ function createJsonFiles() {
         #If character data ini file exists then look for json file.
         if [[ -e $inifilefullname ]]
         then
-            $SCRIPTDIR/characterstatstoobject.awk -v "module=$modulename" -v "jsonfile=$jsonfullfilename" "$inifilefullname"
+            $SCRIPTDIR/characterstatstoobject.awk -v "templateFile=$TEMPLATESDIR/$modulename.tmpl" -v "module=$modulename" -v "jsonfile=$jsonfullfilename" -v "aliasesFile=$ALIASESFILE" "$inifilefullname"
         fi
     done
 }
